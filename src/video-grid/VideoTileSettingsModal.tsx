@@ -16,6 +16,7 @@ limitations under the License.
 
 import React, { ChangeEvent, useState } from "react";
 import { CallFeed } from "matrix-js-sdk/src/webrtc/callFeed";
+import { useTranslation } from "react-i18next";
 
 import { FieldRow } from "../input/Input";
 import { Modal } from "../Modal";
@@ -58,15 +59,19 @@ const LocalVolume: React.FC<LocalVolumeProps> = ({
 // TODO: Extend ModalProps
 interface Props {
   feed: CallFeed;
+  onClose: () => void;
 }
 
-export const VideoTileSettingsModal = ({ feed, ...rest }: Props) => {
+export const VideoTileSettingsModal = ({ feed, onClose, ...rest }: Props) => {
+  const { t } = useTranslation();
+
   return (
     <Modal
       className={styles.videoTileSettingsModal}
-      title="Local volume"
+      title={t("Local volume")}
       isDismissable
       mobileFullScreen
+      onClose={onClose}
       {...rest}
     >
       <div className={styles.content}>

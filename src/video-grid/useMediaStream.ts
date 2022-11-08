@@ -33,29 +33,39 @@ declare global {
 }
 
 export const useMediaStreamTrackCount = (
-  stream: MediaStream
+  stream: MediaStream | null
 ): [number, number] => {
+  const latestAudioTrackCount = stream ? stream.getAudioTracks().length : 0;
+  const latestVideoTrackCount = stream ? stream.getVideoTracks().length : 0;
+
   const [audioTrackCount, setAudioTrackCount] = useState(
-    stream.getAudioTracks().length
+    stream ? stream.getAudioTracks().length : 0
   );
   const [videoTrackCount, setVideoTrackCount] = useState(
-    stream.getVideoTracks().length
+    stream ? stream.getVideoTracks().length : 0
   );
 
   const tracksChanged = useCallback(() => {
-    setAudioTrackCount(stream.getAudioTracks().length);
-    setVideoTrackCount(stream.getVideoTracks().length);
+    setAudioTrackCount(stream ? stream.getAudioTracks().length : 0);
+    setVideoTrackCount(stream ? stream.getVideoTracks().length : 0);
   }, [stream]);
 
   useEventTarget(stream, "addtrack", tracksChanged);
   useEventTarget(stream, "removetrack", tracksChanged);
 
+  if (
+    latestAudioTrackCount !== audioTrackCount ||
+    latestVideoTrackCount !== videoTrackCount
+  ) {
+    tracksChanged();
+  }
+
   return [audioTrackCount, videoTrackCount];
 };
 
 export const useMediaStream = (
-  stream: MediaStream,
-  audioOutputDevice: string,
+  stream: MediaStream | null,
+  audioOutputDevice: string | null,
   mute = false,
   localVolume?: number
 ): RefObject<MediaElement> => {
@@ -76,7 +86,9 @@ export const useMediaStream = (
       if (stream) {
         mediaEl.muted = mute;
         mediaEl.srcObject = stream;
-        mediaEl.play();
+        mediaEl.play().catch((e) => {
+          if (e.name !== "AbortError") throw e;
+        });
 
         // Unmuting the tab in Safari causes all video elements to be individually
         // unmuted, so we need to reset the mute state here to prevent audio loops
@@ -146,7 +158,7 @@ const createLoopback = async (stream: MediaStream): Promise<MediaStream> => {
   await loopbackConn.setRemoteDescription(offer);
   const answer = await loopbackConn.createAnswer();
   // Rewrite SDP to be stereo and (variable) max bitrate
-  const parsedSdp = parseSdp(answer.sdp);
+  const parsedSdp = parseSdp(answer.sdp!);
   parsedSdp.media.forEach((m) =>
     m.fmtp.forEach(
       (f) => (f.config += `;stereo=1;cbr=0;maxaveragebitrate=510000;`)
@@ -194,11 +206,11 @@ export const useAudioContext = (): [
     }
   }, []);
 
-  return [context.current, destination.current, audioRef];
+  return [context.current!, destination.current!, audioRef];
 };
 
 export const useSpatialMediaStream = (
-  stream: MediaStream,
+  stream: MediaStream | null,
   audioContext: AudioContext,
   audioDestination: AudioNode,
   mute = false,
@@ -207,7 +219,7 @@ export const useSpatialMediaStream = (
   const tileRef = useRef<HTMLDivElement>();
   const [spatialAudio] = useSpatialAudio();
   // We always handle audio separately form the video element
-  const mediaRef = useMediaStream(stream, undefined, true, undefined);
+  const mediaRef = useMediaStream(stream, null, true);
   const [audioTrackCount] = useMediaStreamTrackCount(stream);
 
   const gainNodeRef = useRef<GainNode>();
@@ -228,7 +240,7 @@ export const useSpatialMediaStream = (
         });
       }
       if (!sourceRef.current) {
-        sourceRef.current = audioContext.createMediaStreamSource(stream);
+        sourceRef.current = audioContext.createMediaStreamSource(stream!);
       }
 
       const tile = tileRef.current;
@@ -240,12 +252,12 @@ export const useSpatialMediaStream = (
         const bounds = tile.getBoundingClientRect();
         const windowSize = Math.max(window.innerWidth, window.innerHeight);
         // Position the source relative to its placement in the window
-        pannerNodeRef.current.positionX.value =
+        pannerNodeRef.current!.positionX.value =
           (bounds.x + bounds.width / 2) / windowSize - 0.5;
-        pannerNodeRef.current.positionY.value =
+        pannerNodeRef.current!.positionY.value =
           (bounds.y + bounds.height / 2) / windowSize - 0.5;
         // Put the source in front of the listener
-        pannerNodeRef.current.positionZ.value = -2;
+        pannerNodeRef.current!.positionZ.value = -2;
       };
 
       gainNode.gain.value = localVolume;

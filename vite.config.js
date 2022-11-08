@@ -29,9 +29,9 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       svgrPlugin(),
-      htmlTemplate({
+      htmlTemplate.default({
         data: {
-          title: env.VITE_PRODUCT_NAME || "Matrix Video Chat",
+          title: env.VITE_PRODUCT_NAME || "Element Call",
         },
       }),
     ],

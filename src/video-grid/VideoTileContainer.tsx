@@ -25,10 +25,10 @@ import { useRoomMemberName } from "./useRoomMemberName";
 import { VideoTile } from "./VideoTile";
 import { VideoTileSettingsModal } from "./VideoTileSettingsModal";
 import { useModalTriggerState } from "../Modal";
-import { Participant } from "../room/InCallView";
+import { TileDescriptor } from "../room/InCallView";
 
 interface Props {
-  item: Participant;
+  item: TileDescriptor;
   width?: number;
   height?: number;
   getAvatar: (
@@ -39,9 +39,11 @@ interface Props {
   audioContext: AudioContext;
   audioDestination: AudioNode;
   disableSpeakingIndicator: boolean;
-  isFullscreen: boolean;
-  onFullscreen: (item: Participant) => void;
+  maximised: boolean;
+  fullscreen: boolean;
+  onFullscreen: (item: TileDescriptor) => void;
 }
+
 export function VideoTileContainer({
   item,
   width,
@@ -50,7 +52,8 @@ export function VideoTileContainer({
   audioContext,
   audioDestination,
   disableSpeakingIndicator,
-  isFullscreen,
+  maximised,
+  fullscreen,
   onFullscreen,
   ...rest
 }: Props) {
@@ -62,11 +65,10 @@ export function VideoTileContainer({
     speaking,
     stream,
     purpose,
-    member,
   } = useCallFeed(item.callFeed);
-  const { rawDisplayName } = useRoomMemberName(member);
+  const { rawDisplayName } = useRoomMemberName(item.member);
   const [tileRef, mediaRef] = useSpatialMediaStream(
-    stream,
+    stream ?? null,
     audioContext,
     audioDestination,
     isLocal || audioMuted,
@@ -96,16 +98,18 @@ export function VideoTileContainer({
         videoMuted={videoMuted}
         screenshare={purpose === SDPStreamMetadataPurpose.Screenshare}
         name={rawDisplayName}
+        hasFeed={Boolean(item.callFeed)}
         ref={tileRef}
         mediaRef={mediaRef}
-        avatar={getAvatar && getAvatar(member, width, height)}
+        avatar={getAvatar && getAvatar(item.member, width, height)}
         onOptionsPress={onOptionsPress}
         localVolume={localVolume}
-        isFullscreen={isFullscreen}
+        maximised={maximised}
+        fullscreen={fullscreen}
         onFullscreen={onFullscreenCallback}
         {...rest}
       />
-      {videoTileSettingsModalState.isOpen && (
+      {videoTileSettingsModalState.isOpen && !maximised && item.callFeed && (
         <VideoTileSettingsModal
           {...videoTileSettingsModalProps}
           feed={item.callFeed}

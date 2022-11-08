@@ -1,34 +1,30 @@
-import Olm from "@matrix-org/olm";
-import olmWasmPath from "@matrix-org/olm/olm.wasm?url";
 import { IndexedDBStore } from "matrix-js-sdk/src/store/indexeddb";
 import { MemoryStore } from "matrix-js-sdk/src/store/memory";
 import { IndexedDBCryptoStore } from "matrix-js-sdk/src/crypto/store/indexeddb-crypto-store";
 import { LocalStorageCryptoStore } from "matrix-js-sdk/src/crypto/store/localStorage-crypto-store";
 import { MemoryCryptoStore } from "matrix-js-sdk/src/crypto/store/memory-crypto-store";
-import {
-  createClient,
-  createRoomWidgetClient,
-  MatrixClient,
-} from "matrix-js-sdk/src/matrix";
+import { createClient } from "matrix-js-sdk/src/matrix";
 import { ICreateClientOpts } from "matrix-js-sdk/src/matrix";
 import { ClientEvent } from "matrix-js-sdk/src/client";
-import { EventType } from "matrix-js-sdk/src/@types/event";
 import { Visibility, Preset } from "matrix-js-sdk/src/@types/partials";
 import { ISyncStateData, SyncState } from "matrix-js-sdk/src/sync";
-import { WidgetApi } from "matrix-widget-api";
 import { logger } from "matrix-js-sdk/src/logger";
 import {
   GroupCallIntent,
   GroupCallType,
 } from "matrix-js-sdk/src/webrtc/groupCall";
 
+import type { MatrixClient } from "matrix-js-sdk/src/client";
 import type { Room } from "matrix-js-sdk/src/models/room";
 import IndexedDBWorker from "./IndexedDBWorker?worker";
-import { getRoomParams } from "./room/useRoomParams";
+import { getUrlParams } from "./UrlParams";
+import { loadOlm } from "./olm";
 
 export const defaultHomeserver =
   (import.meta.env.VITE_DEFAULT_HOMESERVER as string) ??
   `${window.location.protocol}//${window.location.host}`;
+export const fallbackICEServerAllowed =
+  import.meta.env.VITE_FALLBACK_STUN_ALLOWED === "true";
 export const defaultSfuUserId = import.meta.env
   .VITE_DEFAULT_SFU_USER_ID as string;
 export const defaultSfuDeviceId = import.meta.env
@@ -69,73 +65,6 @@ function waitForSync(client: MatrixClient) {
 }
 
 /**
- * Initialises and returns a new widget-API-based Matrix Client.
- * @param widgetId The ID of the widget that the app is running inside.
- * @param parentUrl The URL of the parent client.
- * @returns The MatrixClient instance
- */
-export async function initMatroskaClient(
-  widgetId: string,
-  parentUrl: string
-): Promise<MatrixClient> {
-  // In this mode, we use a special client which routes all requests through
-  // the host application via the widget API
-
-  const { roomId, userId, deviceId } = getRoomParams();
-  if (!roomId) throw new Error("Room ID must be supplied");
-  if (!userId) throw new Error("User ID must be supplied");
-  if (!deviceId) throw new Error("Device ID must be supplied");
-
-  // These are all the event types the app uses
-  const sendState = [
-    { eventType: EventType.GroupCallPrefix },
-    { eventType: EventType.GroupCallMemberPrefix, stateKey: userId },
-  ];
-  const receiveState = [
-    { eventType: EventType.RoomMember },
-    { eventType: EventType.GroupCallPrefix },
-    { eventType: EventType.GroupCallMemberPrefix },
-  ];
-  const sendRecvToDevice = [
-    EventType.CallInvite,
-    EventType.CallCandidates,
-    EventType.CallAnswer,
-    EventType.CallHangup,
-    EventType.CallReject,
-    EventType.CallSelectAnswer,
-    EventType.CallNegotiate,
-    EventType.CallSDPStreamMetadataChanged,
-    EventType.CallSDPStreamMetadataChangedPrefix,
-    EventType.CallReplaces,
-    "org.matrix.call_duplicate_session",
-  ];
-
-  // Since all data should be coming from the host application, there's no
-  // need to persist anything, and therefore we can use the default stores
-  // We don't even need to set up crypto
-  const client = createRoomWidgetClient(
-    new WidgetApi(widgetId, new URL(parentUrl).origin),
-    {
-      sendState,
-      receiveState,
-      sendToDevice: sendRecvToDevice,
-      receiveToDevice: sendRecvToDevice,
-      turnServers: true,
-    },
-    roomId,
-    {
-      baseUrl: "",
-      userId,
-      deviceId,
-      timelineSupport: true,
-    }
-  );
-
-  await client.startClient();
-  return client;
-}
-
-/**
  * Initialises and returns a new standalone Matrix Client.
  * If true is passed for the 'restore' parameter, a check will be made
  * to ensure that corresponding crypto data is stored and recovered.
@@ -148,12 +77,9 @@ export async function initClient(
   clientOptions: ICreateClientOpts,
   restore: boolean
 ): Promise<MatrixClient> {
-  // TODO: https://gitlab.matrix.org/matrix-org/olm/-/issues/10
-  window.OLM_OPTIONS = {};
-  await Olm.init({ locateFile: () => olmWasmPath });
+  await loadOlm();
 
   let indexedDB: IDBFactory;
-
   try {
     indexedDB = window.indexedDB;
   } catch (e) {}
@@ -210,12 +136,12 @@ export async function initClient(
     storeOpts.cryptoStore = new MemoryCryptoStore();
   }
 
-  // XXX: we read from the room params in RoomPage too:
+  // XXX: we read from the URL params in RoomPage too:
   // it would be much better to read them in one place and pass
   // the values around, but we initialise the matrix client in
   // many different places so we'd have to pass it into all of
   // them.
-  const { e2eEnabled } = getRoomParams();
+  const { e2eEnabled } = getUrlParams();
   if (!e2eEnabled) {
     logger.info("Disabling E2E: group call signalling will NOT be encrypted.");
   }
@@ -228,6 +154,7 @@ export async function initClient(
     // so we don't want API calls taking ages, we'd rather they just fail.
     localTimeoutMs: 5000,
     useE2eForGroupCall: e2eEnabled,
+    fallbackICEServerAllowed: fallbackICEServerAllowed,
   });
 
   try {
@@ -386,5 +313,7 @@ export function getAvatarUrl(
 ): string {
   const width = Math.floor(avatarSize * window.devicePixelRatio);
   const height = Math.floor(avatarSize * window.devicePixelRatio);
-  return mxcUrl && client.mxcUrlToHttp(mxcUrl, width, height, "crop");
+  // scale is more suitable for larger sizes
+  const resizeMethod = avatarSize <= 96 ? "crop" : "scale";
+  return mxcUrl && client.mxcUrlToHttp(mxcUrl, width, height, resizeMethod)!;
 }

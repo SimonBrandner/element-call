@@ -22,21 +22,26 @@ import React, {
   createContext,
   useMemo,
   useContext,
+  useRef,
 } from "react";
 import { useHistory } from "react-router-dom";
 import { MatrixClient, ClientEvent } from "matrix-js-sdk/src/client";
 import { MatrixEvent } from "matrix-js-sdk/src/models/event";
 import { logger } from "matrix-js-sdk/src/logger";
+import { useTranslation } from "react-i18next";
 
 import { ErrorView } from "./FullScreenView";
 import {
   initClient,
-  initMatroskaClient,
   defaultHomeserver,
   CryptoStoreIntegrityError,
+  fallbackICEServerAllowed,
   defaultSfuUserId,
   defaultSfuDeviceId,
 } from "./matrix-utils";
+import { widget } from "./widget";
+import { PosthogAnalytics, RegistrationType } from "./PosthogAnalytics";
+import { translatedError } from "./TranslatedError";
 
 declare global {
   interface Window {
@@ -86,6 +91,7 @@ interface Props {
 
 export const ClientProvider: FC<Props> = ({ children }) => {
   const history = useHistory();
+  const initializing = useRef(false);
   const [
     { loading, isAuthenticated, isPasswordlessUser, client, userName, error },
     setState,
@@ -99,19 +105,23 @@ export const ClientProvider: FC<Props> = ({ children }) => {
   });
 
   useEffect(() => {
+    // In case the component is mounted, unmounted, and remounted quickly (as
+    // React does in strict mode), we need to make sure not to doubly initialize
+    // the client
+    if (initializing.current) return;
+    initializing.current = true;
+
     const init = async (): Promise<
       Pick<ClientProviderState, "client" | "isPasswordlessUser">
     > => {
-      const query = new URLSearchParams(window.location.search);
-      const widgetId = query.get("widgetId");
-      const parentUrl = query.get("parentUrl");
-
-      if (widgetId && parentUrl) {
-        // We're inside a widget, so let's engage *Matroska mode*
-        logger.log("Using a Matroska client");
-
+      if (widget) {
+        // We're inside a widget, so let's engage *matryoshka mode*
+        logger.log("Using a matryoshka client");
+        PosthogAnalytics.instance.setRegistrationType(
+          RegistrationType.Registered
+        );
         return {
-          client: await initMatroskaClient(widgetId, parentUrl),
+          client: await widget.client,
           isPasswordlessUser: false,
         };
       } else {
@@ -127,6 +137,11 @@ export const ClientProvider: FC<Props> = ({ children }) => {
             session;
 
           try {
+            PosthogAnalytics.instance.setRegistrationType(
+              passwordlessUser
+                ? RegistrationType.Guest
+                : RegistrationType.Registered
+            );
             return {
               client: await initClient(
                 {
@@ -136,6 +151,7 @@ export const ClientProvider: FC<Props> = ({ children }) => {
                   deviceId: device_id,
                   localSfu: defaultSfuUserId,
                   localSfuDeviceId: defaultSfuDeviceId,
+                  fallbackICEServerAllowed: fallbackICEServerAllowed,
                 },
                 true
               ),
@@ -151,12 +167,13 @@ export const ClientProvider: FC<Props> = ({ children }) => {
                     accessToken: access_token,
                     userId: user_id,
                     deviceId: device_id,
+                    fallbackICEServerAllowed: fallbackICEServerAllowed,
                     localSfu: defaultSfuUserId,
                     localSfuDeviceId: defaultSfuDeviceId,
                   },
                   false // Don't need the crypto store just to log out
                 );
-                await client.logout(undefined, true);
+                await client.logout(true);
               } catch (err_) {
                 logger.warn(
                   "The previous session was lost, and we couldn't log it out, " +
@@ -195,7 +212,8 @@ export const ClientProvider: FC<Props> = ({ children }) => {
           userName: null,
           error: undefined,
         });
-      });
+      })
+      .finally(() => (initializing.current = false));
   }, []);
 
   const changePassword = useCallback(
@@ -262,13 +280,30 @@ export const ClientProvider: FC<Props> = ({ children }) => {
     [client]
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await client.logout(true);
+    await client.clearStores();
     clearSession();
+    setState({
+      client: undefined,
+      loading: false,
+      isAuthenticated: false,
+      isPasswordlessUser: true,
+      userName: "",
+      error: undefined,
+    });
     history.push("/");
-  }, [history]);
+    PosthogAnalytics.instance.setRegistrationType(RegistrationType.Guest);
+  }, [history, client]);
+
+  const { t } = useTranslation();
 
   useEffect(() => {
-    if (client) {
+    // To protect against multiple sessions writing to the same storage
+    // simultaneously, we send a to-device message that shuts down all other
+    // running instances of the app. This isn't necessary if the app is running
+    // in a widget though, since then it'll be mostly stateless.
+    if (!widget && client) {
       const loadTime = Date.now();
 
       const onToDeviceEvent = (event: MatrixEvent) => {
@@ -283,8 +318,9 @@ export const ClientProvider: FC<Props> = ({ children }) => {
 
           setState((prev) => ({
             ...prev,
-            error: new Error(
-              "This application has been opened in another tab."
+            error: translatedError(
+              "This application has been opened in another tab.",
+              t
             ),
           }));
         }
@@ -302,7 +338,7 @@ export const ClientProvider: FC<Props> = ({ children }) => {
         client?.removeListener(ClientEvent.ToDeviceEvent, onToDeviceEvent);
       };
     }
-  }, [client]);
+  }, [client, t]);
 
   const context = useMemo<ClientState>(
     () => ({

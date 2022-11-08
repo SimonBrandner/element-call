@@ -20,93 +20,44 @@ limitations under the License.
 // dependency references.
 import "matrix-js-sdk/src/browser-index";
 
-import React from "react";
-import ReactDOM from "react-dom";
+import React, { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 import { createBrowserHistory } from "history";
-import * as Sentry from "@sentry/react";
-import { Integrations } from "@sentry/tracing";
 
 import "./index.css";
 import App from "./App";
 import { init as initRageshake } from "./settings/rageshake";
+import { Initializer } from "./initializer";
 
 initRageshake();
 
 console.info(`matrix-video-chat ${import.meta.env.VITE_APP_VERSION || "dev"}`);
 
+const root = createRoot(document.getElementById("root")!);
+
+let fatalError: Error | null = null;
+
 if (!window.isSecureContext) {
-  throw new Error(
+  fatalError = new Error(
     "This app cannot run in an insecure context. To fix this, access the app " +
       "via a local loopback address, or serve it over HTTPS.\n" +
       "https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts"
   );
+} else if (!navigator.mediaDevices) {
+  fatalError = new Error("Your browser does not support WebRTC.");
 }
 
-if (import.meta.env.VITE_CUSTOM_THEME) {
-  const style = document.documentElement.style;
-  style.setProperty("--accent", import.meta.env.VITE_THEME_ACCENT as string);
-  style.setProperty(
-    "--accent-20",
-    import.meta.env.VITE_THEME_ACCENT_20 as string
-  );
-  style.setProperty("--alert", import.meta.env.VITE_THEME_ALERT as string);
-  style.setProperty(
-    "--alert-20",
-    import.meta.env.VITE_THEME_ALERT_20 as string
-  );
-  style.setProperty("--links", import.meta.env.VITE_THEME_LINKS as string);
-  style.setProperty(
-    "--primary-content",
-    import.meta.env.VITE_THEME_PRIMARY_CONTENT as string
-  );
-  style.setProperty(
-    "--secondary-content",
-    import.meta.env.VITE_THEME_SECONDARY_CONTENT as string
-  );
-  style.setProperty(
-    "--tertiary-content",
-    import.meta.env.VITE_THEME_TERTIARY_CONTENT as string
-  );
-  style.setProperty(
-    "--tertiary-content-20",
-    import.meta.env.VITE_THEME_TERTIARY_CONTENT_20 as string
-  );
-  style.setProperty(
-    "--quaternary-content",
-    import.meta.env.VITE_THEME_QUATERNARY_CONTENT as string
-  );
-  style.setProperty(
-    "--quinary-content",
-    import.meta.env.VITE_THEME_QUINARY_CONTENT as string
-  );
-  style.setProperty("--system", import.meta.env.VITE_THEME_SYSTEM as string);
-  style.setProperty(
-    "--background",
-    import.meta.env.VITE_THEME_BACKGROUND as string
-  );
-  style.setProperty(
-    "--background-85",
-    import.meta.env.VITE_THEME_BACKGROUND_85 as string
-  );
+if (fatalError !== null) {
+  root.render(fatalError.message);
+  throw fatalError; // Stop the app early
 }
+
+Initializer.initBeforeReact();
 
 const history = createBrowserHistory();
 
-Sentry.init({
-  dsn: import.meta.env.VITE_SENTRY_DSN as string,
-  environment:
-    (import.meta.env.VITE_SENTRY_ENVIRONMENT as string) ?? "production",
-  integrations: [
-    new Integrations.BrowserTracing({
-      routingInstrumentation: Sentry.reactRouterV5Instrumentation(history),
-    }),
-  ],
-  tracesSampleRate: 1.0,
-});
-
-ReactDOM.render(
-  <React.StrictMode>
+root.render(
+  <StrictMode>
     <App history={history} />
-  </React.StrictMode>,
-  document.getElementById("root")
+  </StrictMode>
 );

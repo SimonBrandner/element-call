@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 import React from "react";
+import { useTranslation } from "react-i18next";
 import useClipboard from "react-use-clipboard";
 
 import { ReactComponent as CheckIcon } from "../icons/Check.svg";
@@ -36,6 +37,7 @@ export function CopyButton({
   copiedMessage,
   ...rest
 }: Props) {
+  const { t } = useTranslation();
   const [isCopied, setCopied] = useClipboard(value, { successDuration: 3000 });
 
   return (
@@ -46,10 +48,11 @@ export function CopyButton({
       className={className}
       onPress={setCopied}
       iconStyle={isCopied ? "stroke" : "fill"}
+      aria-label={t("Copy")}
     >
       {isCopied ? (
         <>
-          {variant !== "icon" && <span>{copiedMessage || "Copied!"}</span>}
+          {variant !== "icon" && <span>{copiedMessage || t("Copied!")}</span>}
           <CheckIcon />
         </>
       ) : (

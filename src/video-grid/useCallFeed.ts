@@ -16,23 +16,23 @@ limitations under the License.
 
 import { useState, useEffect } from "react";
 import { CallFeed, CallFeedEvent } from "matrix-js-sdk/src/webrtc/callFeed";
-import { RoomMember } from "matrix-js-sdk/src/models/room-member";
 import { SDPStreamMetadataPurpose } from "matrix-js-sdk/src/webrtc/callEventTypes";
 
 interface CallFeedState {
-  member: RoomMember;
+  callFeed: CallFeed | undefined;
   isLocal: boolean;
   speaking: boolean;
   videoMuted: boolean;
   audioMuted: boolean;
   localVolume: number;
-  disposed: boolean;
-  stream: MediaStream;
-  purpose: SDPStreamMetadataPurpose;
+  disposed: boolean | undefined;
+  stream: MediaStream | undefined;
+  purpose: SDPStreamMetadataPurpose | undefined;
 }
-function getCallFeedState(callFeed: CallFeed): CallFeedState {
+
+function getCallFeedState(callFeed: CallFeed | undefined): CallFeedState {
   return {
-    member: callFeed ? callFeed.getMember() : null,
+    callFeed,
     isLocal: callFeed ? callFeed.isLocal() : false,
     speaking: callFeed ? callFeed.isSpeaking() : false,
     videoMuted: callFeed ? callFeed.isVideoMuted() : true,
@@ -44,7 +44,7 @@ function getCallFeedState(callFeed: CallFeed): CallFeedState {
   };
 }
 
-export function useCallFeed(callFeed: CallFeed): CallFeedState {
+export function useCallFeed(callFeed: CallFeed | undefined): CallFeedState {
   const [state, setState] = useState<CallFeedState>(() =>
     getCallFeedState(callFeed)
   );
