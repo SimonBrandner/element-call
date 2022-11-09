@@ -36,8 +36,8 @@ import {
   defaultHomeserver,
   CryptoStoreIntegrityError,
   fallbackICEServerAllowed,
-  defaultSfuUserId,
   defaultSfuDeviceId,
+  defaultSfuUserId,
 } from "./matrix-utils";
 import { widget } from "./widget";
 import { PosthogAnalytics, RegistrationType } from "./PosthogAnalytics";

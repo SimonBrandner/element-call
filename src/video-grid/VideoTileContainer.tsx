@@ -71,8 +71,8 @@ export function VideoTileContainer({
     stream ?? null,
     audioContext,
     audioDestination,
-    isLocal || audioMuted,
-    localVolume
+    localVolume,
+    isLocal || maximised
   );
   const {
     modalState: videoTileSettingsModalState,
