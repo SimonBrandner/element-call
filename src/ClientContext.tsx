@@ -149,7 +149,7 @@ export const ClientProvider: FC<Props> = ({ children }) => {
                   accessToken: access_token,
                   userId: user_id,
                   deviceId: device_id,
-                  localSfu: defaultSfuUserId,
+                  localSfuUserId: defaultSfuUserId,
                   localSfuDeviceId: defaultSfuDeviceId,
                   fallbackICEServerAllowed: fallbackICEServerAllowed,
                 },
@@ -168,7 +168,7 @@ export const ClientProvider: FC<Props> = ({ children }) => {
                     userId: user_id,
                     deviceId: device_id,
                     fallbackICEServerAllowed: fallbackICEServerAllowed,
-                    localSfu: defaultSfuUserId,
+                    localSfuUserId: defaultSfuUserId,
                     localSfuDeviceId: defaultSfuDeviceId,
                   },
                   false // Don't need the crypto store just to log out
