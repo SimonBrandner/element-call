@@ -22,6 +22,7 @@ import { VideoGrid, useVideoGridLayout } from "./VideoGrid";
 import { VideoTile } from "./VideoTile";
 import { Button } from "../button";
 import { TileDescriptor } from "../room/InCallView";
+import { ConnectionState } from "../room/useGroupCall";
 
 export default {
   title: "VideoGrid",
@@ -41,6 +42,7 @@ export const ParticipantsTest = () => {
         member: new RoomMember("!fake:room.id", `@user${i}:fake.dummy`),
         focused: false,
         presenter: false,
+        connectionState: ConnectionState.Connected,
       })),
     [participantCount]
   );
@@ -79,7 +81,7 @@ export const ParticipantsTest = () => {
               key={item.id}
               name={`User ${item.id}`}
               disableSpeakingIndicator={items.length < 3}
-              hasFeed={true}
+              connectionState={ConnectionState.Connected}
               {...rest}
             />
           )}

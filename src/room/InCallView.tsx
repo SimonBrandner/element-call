@@ -62,6 +62,7 @@ import { widget, ElementWidgetActions } from "../widget";
 import { useJoinRule } from "./useJoinRule";
 import { useUrlParams } from "../UrlParams";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
+import { ConnectionState, ParticipantInfo } from "./useGroupCall";
 
 const canScreenshare = "getDisplayMedia" in (navigator.mediaDevices ?? {});
 // There is currently a bug in Safari our our code with cloning and sending MediaStreams
@@ -72,7 +73,7 @@ const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 interface Props {
   client: MatrixClient;
   groupCall: GroupCall;
-  participants: RoomMember[];
+  participants: Map<RoomMember, Map<string, ParticipantInfo>>;
   roomName: string;
   avatarUrl: string;
   microphoneMuted: boolean;
@@ -81,7 +82,7 @@ interface Props {
   toggleMicrophoneMuted: () => void;
   toggleScreensharing: () => void;
   userMediaFeeds: CallFeed[];
-  activeSpeaker: string;
+  activeSpeaker: CallFeed | null;
   onLeave: () => void;
   isScreensharing: boolean;
   screenshareFeeds: CallFeed[];
@@ -99,6 +100,7 @@ export interface TileDescriptor {
   presenter: boolean;
   callFeed?: CallFeed;
   isLocal?: boolean;
+  connectionState: ConnectionState;
 }
 
 export function InCallView({
@@ -192,46 +194,53 @@ export function InCallView({
 
   const items = useMemo(() => {
     const tileDescriptors: TileDescriptor[] = [];
+    const localUserId = client.getUserId()!;
+    const localDeviceId = client.getDeviceId()!;
 
-    // one tile for each participants, to start with (we want a tile for everyone we
-    // think should be in the call, even if we don't have a media feed for them yet)
-    for (const p of participants) {
-      const userMediaFeed = userMediaFeeds.find((f) => f.userId === p.userId);
+    // One tile for each participant, to start with (we want a tile for everyone we
+    // think should be in the call, even if we don't have a call feed for them yet)
+    for (const [member, participantMap] of participants) {
+      for (const [deviceId, { connectionState, presenter }] of participantMap) {
+        const callFeed = userMediaFeeds.find(
+          (f) => f.userId === member.userId && f.deviceId === deviceId
+        );
 
-      // NB. this assumes that the same user can't join more than once from multiple
-      // devices, but the participants are just RoomMembers, so this assumption is baked
-      // into GroupCall itself.
-      tileDescriptors.push({
-        id: p.userId,
-        member: p,
-        callFeed: userMediaFeed,
-        focused: screenshareFeeds.length === 0 && p.userId === activeSpeaker,
-        isLocal: p.userId === client.getUserId(),
-        presenter: false,
-      });
+        tileDescriptors.push({
+          id: `${member.userId} ${deviceId}`,
+          member,
+          callFeed,
+          focused: screenshareFeeds.length === 0 && callFeed === activeSpeaker,
+          isLocal: member.userId === localUserId && deviceId === localDeviceId,
+          presenter,
+          connectionState,
+        });
+      }
     }
 
     PosthogAnalytics.instance.eventCallEnded.cacheParticipantCountChanged(
-      participants.length
+      tileDescriptors.length
     );
-    // add the screenshares too
+
+    // Add the screenshares too
     for (const screenshareFeed of screenshareFeeds) {
-      const userMediaItem = tileDescriptors.find(
-        (item) => item.member.userId === screenshareFeed.userId
-      );
+      const member = screenshareFeed.getMember()!;
+      const connectionState = participants
+        .get(member)
+        ?.get(screenshareFeed.deviceId!)?.connectionState;
 
-      if (userMediaItem) {
-        userMediaItem.presenter = true;
+      // If the participant has left, their screenshare feed is stale and we
+      // shouldn't bother showing it
+      if (connectionState !== undefined) {
+        tileDescriptors.push({
+          id: screenshareFeed.stream.id,
+          member,
+          callFeed: screenshareFeed,
+          focused: true,
+          isLocal: screenshareFeed.isLocal(),
+          presenter: false,
+          connectionState,
+        });
       }
-
-      tileDescriptors.push({
-        id: screenshareFeed.stream.id,
-        member: screenshareFeed.getMember()!,
-        callFeed: screenshareFeed,
-        focused: true,
-        isLocal: screenshareFeed.isLocal(),
-        presenter: false,
-      });
     }
 
     return tileDescriptors;
