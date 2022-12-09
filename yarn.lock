@@ -10266,9 +10266,9 @@ matrix-events-sdk@0.0.1:
   resolved "https://registry.yarnpkg.com/matrix-events-sdk/-/matrix-events-sdk-0.0.1.tgz#c8c38911e2cb29023b0bbac8d6f32e0de2c957dd"
   integrity sha512-1QEOsXO+bhyCroIe2/A5OwaxHvBm7EsSQ46DEDn8RBIfQwN5HWBpFvyWWR4QY0KHPPnnJdI99wgRiAl7Ad5qaA==
 
-"matrix-js-sdk@github:matrix-org/matrix-js-sdk#35ad7ede057006250dfb5865742bc6a21ec151c3":
-  version "21.2.0"
-  resolved "https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/35ad7ede057006250dfb5865742bc6a21ec151c3"
+"matrix-js-sdk@github:matrix-org/matrix-js-sdk#8f7d6dd272bd77996b379efbf9cf1d38bbe2b538":
+  version "22.0.0"
+  resolved "https://codeload.github.com/matrix-org/matrix-js-sdk/tar.gz/8f7d6dd272bd77996b379efbf9cf1d38bbe2b538"
   dependencies:
     "@babel/runtime" "^7.12.5"
     another-json "^0.2.0"
@@ -10281,6 +10281,7 @@ matrix-events-sdk@0.0.1:
     qs "^6.9.6"
     sdp-transform "^2.14.1"
     unhomoglyph "^1.0.6"
+    uuid "7"
 
 matrix-widget-api@^1.0.0:
   version "1.1.1"
@@ -14182,6 +14183,11 @@ utils-merge@1.0.1:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/utils-merge/-/utils-merge-1.0.1.tgz#9f95710f50a267947b2ccc124741c1028427e713"
   integrity sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==
+
+uuid@7:
+  version "7.0.3"
+  resolved "https://registry.yarnpkg.com/uuid/-/uuid-7.0.3.tgz#c5c9f2c8cf25dc0a372c4df1441c41f5bd0c680b"
+  integrity sha512-DPSke0pXhTZgoF/d+WSt2QaKMCFSfx7QegxEWT+JOuHF5aWrKEn0G+ztjuJg/gG8/ItK+rbPCD/yNv8yyih6Cg==
 
 uuid@^3.3.2:
   version "3.4.0"
