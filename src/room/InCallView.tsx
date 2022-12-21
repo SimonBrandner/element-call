@@ -55,14 +55,14 @@ import { useShowInspector, useSpatialAudio } from "../settings/useSetting";
 import { useModalTriggerState } from "../Modal";
 import { useAudioContext } from "../video-grid/useMediaStream";
 import { useFullscreen } from "../video-grid/useFullscreen";
-import { AudioContainer } from "../video-grid/AudioContainer";
-import { useAudioOutputDevice } from "../video-grid/useAudioOutputDevice";
 import { PosthogAnalytics } from "../PosthogAnalytics";
 import { widget, ElementWidgetActions } from "../widget";
 import { useJoinRule } from "./useJoinRule";
 import { useUrlParams } from "../UrlParams";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
-import { ConnectionState, ParticipantInfo } from "./useGroupCall";
+import { ParticipantInfo } from "./useGroupCall";
+import { TileDescriptor } from "../video-grid/TileDescriptor";
+import { AudioSink } from "../video-grid/AudioSink";
 
 const canScreenshare = "getDisplayMedia" in (navigator.mediaDevices ?? {});
 // There is currently a bug in Safari our our code with cloning and sending MediaStreams
@@ -89,18 +89,6 @@ interface Props {
   roomIdOrAlias: string;
   unencryptedEventsFromUsers: Set<string>;
   hideHeader: boolean;
-}
-
-// Represents something that should get a tile on the layout,
-// ie. a user's video feed or a screen share feed.
-export interface TileDescriptor {
-  id: string;
-  member: RoomMember;
-  focused: boolean;
-  presenter: boolean;
-  callFeed?: CallFeed;
-  isLocal?: boolean;
-  connectionState: ConnectionState;
 }
 
 export function InCallView({
@@ -145,14 +133,11 @@ export function InCallView({
 
   const [spatialAudio] = useSpatialAudio();
 
-  const [audioContext, audioDestination, audioRef] = useAudioContext();
-  const { audioOutput } = useMediaHandler();
+  const [audioContext, audioDestination] = useAudioContext();
   const [showInspector] = useShowInspector();
 
   const { modalState: feedbackModalState, modalProps: feedbackModalProps } =
     useModalTriggerState();
-
-  useAudioOutputDevice(audioRef, audioOutput);
 
   const { hideScreensharing } = useUrlParams();
 
@@ -246,21 +231,22 @@ export function InCallView({
     return tileDescriptors;
   }, [client, participants, userMediaFeeds, activeSpeaker, screenshareFeeds]);
 
+  const reducedControls = boundsValid && bounds.width <= 400;
+  const noControls = reducedControls && bounds.height <= 400;
+
   // The maximised participant: either the participant that the user has
   // manually put in fullscreen, or the focused (active) participant if the
   // window is too small to show everyone
   const maximisedParticipant = useMemo(
     () =>
       fullscreenParticipant ??
-      (boundsValid && bounds.height <= 400 && bounds.width <= 400
+      (noControls
         ? items.find((item) => item.focused) ??
           items.find((item) => item.callFeed) ??
           null
         : null),
-    [fullscreenParticipant, boundsValid, bounds, items]
+    [fullscreenParticipant, noControls, items]
   );
-
-  const reducedControls = boundsValid && bounds.width <= 400;
 
   const renderAvatar = useCallback(
     (roomMember: RoomMember, width: number, height: number) => {
@@ -347,16 +333,66 @@ export function InCallView({
     [styles.maximised]: maximisedParticipant,
   });
 
+  // If spatial audio is disabled, we render one audio tag for each participant
+  // (with spatial audio, all the audio goes via the Web Audio API)
+  // We also do this if there's a feed maximised because we only trigger spatial
+  // audio rendering for feeds that we're displaying, which will need to be fixed
+  // once we start having more participants than we can fit on a screen, but this
+  // is a workaround for now.
+  const { audioOutput } = useMediaHandler();
+  const audioElements: JSX.Element[] = [];
+  if (!spatialAudio || maximisedParticipant) {
+    for (const item of items) {
+      if (item.isLocal) continue; // We don't want to render own audio
+      audioElements.push(
+        <AudioSink
+          tileDescriptor={item}
+          audioOutput={audioOutput}
+          key={item.id}
+        />
+      );
+    }
+  }
+
+  let footer: JSX.Element | null;
+
+  if (noControls) {
+    footer = null;
+  } else if (reducedControls) {
+    footer = (
+      <div className={styles.footer}>
+        <MicButton muted={microphoneMuted} onPress={toggleMicrophoneMuted} />
+        <VideoButton muted={localVideoMuted} onPress={toggleLocalVideoMuted} />
+        <HangupButton onPress={onLeave} />
+      </div>
+    );
+  } else {
+    footer = (
+      <div className={styles.footer}>
+        <MicButton muted={microphoneMuted} onPress={toggleMicrophoneMuted} />
+        <VideoButton muted={localVideoMuted} onPress={toggleLocalVideoMuted} />
+        {canScreenshare && !hideScreensharing && !isSafari && (
+          <ScreenshareButton
+            enabled={isScreensharing}
+            onPress={toggleScreensharing}
+          />
+        )}
+        <OverflowMenu
+          inCall
+          roomIdOrAlias={roomIdOrAlias}
+          groupCall={groupCall}
+          showInvite={joinRule === JoinRule.Public}
+          feedbackModalState={feedbackModalState}
+          feedbackModalProps={feedbackModalProps}
+        />
+        <HangupButton onPress={onLeave} />
+      </div>
+    );
+  }
+
   return (
     <div className={containerClasses} ref={containerRef}>
-      <audio ref={audioRef} />
-      {(!spatialAudio || maximisedParticipant) && (
-        <AudioContainer
-          items={items}
-          audioContext={audioContext}
-          audioDestination={audioDestination}
-        />
-      )}
+      <>{audioElements}</>
       {!hideHeader && !maximisedParticipant && (
         <Header>
           <LeftNav>
@@ -373,30 +409,7 @@ export function InCallView({
         </Header>
       )}
       {renderContent()}
-      <div className={styles.footer}>
-        <MicButton muted={microphoneMuted} onPress={toggleMicrophoneMuted} />
-        <VideoButton muted={localVideoMuted} onPress={toggleLocalVideoMuted} />
-        {canScreenshare &&
-          !hideScreensharing &&
-          !isSafari &&
-          !reducedControls && (
-            <ScreenshareButton
-              enabled={isScreensharing}
-              onPress={toggleScreensharing}
-            />
-          )}
-        {!reducedControls && (
-          <OverflowMenu
-            inCall
-            roomIdOrAlias={roomIdOrAlias}
-            groupCall={groupCall}
-            showInvite={joinRule === JoinRule.Public}
-            feedbackModalState={feedbackModalState}
-            feedbackModalProps={feedbackModalProps}
-          />
-        )}
-        <HangupButton onPress={onLeave} />
-      </div>
+      {footer}
       <GroupCallInspector
         client={client}
         groupCall={groupCall}
